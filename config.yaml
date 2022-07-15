@@ -1,0 +1,6 @@
+repository:
+  - id: test
+    name: test
+    mode: 6
+    mirror:
+      - https://repo1.maven.org/maven2
