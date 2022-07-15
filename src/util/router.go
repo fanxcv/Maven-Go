@@ -28,20 +28,22 @@ func init() {
 	fs = http.Dir(config.LocalRepository)
 	fileServer = http.StripPrefix(path.Join("/", config.Context), http.FileServer(fs))
 
+	gin.SetMode(gin.ReleaseMode)
 	Engine = gin.Default()
+	Engine.Use(GinLogger())
 	Engine.PUT("/:context/:libName/*filePath", put)
 	Engine.GET("/:context/:libName/*filePath", get)
 	Engine.HEAD("/:context/:libName/*filePath", get)
 }
 
 func get(c *gin.Context) {
-	mode, repository, err := checkAndGet(c)
+	repository, mirror, err := checkAndGetRepository(c)
 	if err != nil {
 		c.String(http.StatusNotFound, err.Error())
 		return
 	}
 
-	if mode != 4 && mode != 6 {
+	if repository.Mode != 4 && repository.Mode != 6 {
 		c.String(http.StatusForbidden, "repository not support read")
 		return
 	}
@@ -52,7 +54,7 @@ func get(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, c.Request.RequestURI+"/")
 		return
 	}
-	localFilePath := path.Join(repository.Id, filePath)
+	localFilePath := path.Join(mirror.Id, filePath)
 
 	f, err := fs.Open(localFilePath)
 	defer closeFile(f)
@@ -63,7 +65,18 @@ func get(c *gin.Context) {
 			c.String(http.StatusNotFound, "not found")
 		}
 
-		c.Data(response.StatusCode(), response.Header().Get("Content-Type"), response.Body())
+		data := response.Body()
+		if repository.Cache {
+			// 不缓存metadata
+			filePath = strings.ToLower(filePath)
+			if ext != ".xml" && !strings.HasSuffix(filePath, ".xml.sha1") && !strings.HasSuffix(filePath, ".xml.md5") {
+				if err = saveFile(localFilePath, data); err != nil {
+					log.Errorf("cache mirror file failed. message: %v\n", err)
+				}
+			}
+		}
+
+		c.Data(response.StatusCode(), response.Header().Get("Content-Type"), data)
 		return
 	}
 
@@ -95,43 +108,42 @@ func put(c *gin.Context) {
 		return
 	}
 
-	mode, repository, err := checkAndGet(c)
+	repository, mirror, err := checkAndGetRepository(c)
 	if err != nil {
 		c.String(http.StatusNotFound, err.Error())
 		return
 	}
 
-	if mode != 6 && mode != 2 {
+	if repository.Mode != 6 && repository.Mode != 2 {
 		c.String(http.StatusForbidden, "repository not support write")
 		return
 	}
 
 	filePath := c.Param("filePath")
-	filePath = path.Join(config.LocalRepository, repository.Id, filePath)
-	dirPath := path.Dir(filePath)
-
-	if stat, err := os.Stat(dirPath); err != nil && os.IsNotExist(err) {
-		if err = os.MkdirAll(dirPath, 0755); err != nil {
-			c.String(http.StatusInternalServerError, fmt.Sprintf("create dir failed. message: %v\n", err))
-			return
-		}
-	} else if !stat.IsDir() {
-		c.String(http.StatusInternalServerError, fmt.Sprintf("%s is not a dir\n", dirPath))
-		return
-	}
-
-	if err = ioutil.WriteFile(filePath, data, 0755); err != nil {
+	localFilePath := path.Join(config.LocalRepository, mirror.Id, filePath)
+	if err = saveFile(localFilePath, data); err != nil {
 		c.String(http.StatusInternalServerError, fmt.Sprintf("write file failed. message: %v\n", err))
 		return
 	}
 
 	if generate := c.Query("generate_md5_sha1"); strings.EqualFold(generate, "true") {
-		if err = generateHash(filePath); err != nil {
+		if err = generateHash(localFilePath); err != nil {
 			c.String(http.StatusInternalServerError, fmt.Sprintf("generate hash failed, message: %v\n", err))
 		}
 	}
 
 	c.String(http.StatusOK, "OK")
+}
+
+func saveFile(localFilePath string, data []byte) error {
+	if err := CreateParentIfNotExist(localFilePath); err != nil {
+		return err
+	}
+
+	if err := ioutil.WriteFile(localFilePath, data, 0755); err != nil {
+		return err
+	}
+	return nil
 }
 
 func readRemote(repository *Repository, filePath string) *resty.Response {
@@ -174,12 +186,6 @@ func generateHash(file string) error {
 		return err
 	}
 	if err = touchFile(file, "sha1", bytes); err != nil {
-		return err
-	}
-	if err = touchFile(file, "sha256", bytes); err != nil {
-		return err
-	}
-	if err = touchFile(file, "sha512", bytes); err != nil {
 		return err
 	}
 	return nil
@@ -228,32 +234,31 @@ func closeFile(f http.File) {
 	}
 }
 
-func checkAndGet(c *gin.Context) (mode int, repository *Repository, err error) {
+func checkAndGetRepository(c *gin.Context) (repository *Repository, mirror *Repository, err error) {
 	context := c.Param("context")
 	libName := c.Param("libName")
 	filePath := c.Param("filePath")
 	fullPath := fmt.Sprintf("/%s/%s%s", context, libName, filePath)
 	if context != config.Context {
-		return 0, nil, errors.New(fmt.Sprintf("not found, url = %s", fullPath))
+		return nil, nil, errors.New(fmt.Sprintf("not found, url = %s", fullPath))
 	}
 
 	// 获取存储库配置
 	repository = config.RepositoryStore[libName]
 	if repository == nil || repository.Mode == 0 {
-		return 0, nil, errors.New(fmt.Sprintf("repository %s is not actived", libName))
+		return nil, nil, errors.New(fmt.Sprintf("repository %s is not actived", libName))
 	}
 
 	// 判断是否需要转为镜像库
-	var mirror *Repository
 	if repository.Target != "" {
 		if mirror = config.RepositoryStore[repository.Target]; mirror == nil {
-			return 0, nil, errors.New(fmt.Sprintf("target repository %s is not found", repository.Target))
+			return nil, nil, errors.New(fmt.Sprintf("target repository %s is not found", repository.Target))
 		}
 	} else {
 		mirror = repository
 	}
 
-	return repository.Mode, mirror, nil
+	return repository, mirror, nil
 }
 
 func checkAuth(c *gin.Context) bool {

@@ -1,6 +1,26 @@
-repository:
-  - id: test
-    name: test
-    mode: 6
+listen: 127.0.0.1 # 监听地址
+port: 8880 # 监听端口
+logging:
+  path: . # 文件日志保存地址, 默认为空, 即不写入文件
+  level: debug # 日志级别
+context: maven # 基础路径
+localRepository: . # 本地仓库地址
+user: # 认证用户配置, 支持多个
+  - name: user
+    password: password
+repository: # 仓库设置
+  - id: mirror
+    name: maven mirror
+    mode: 4
     mirror:
+      - https://maven.aliyun.com/nexus/content/repositories/public
+      - https://repo1.maven.org/maven2
+  - id: private
+    name: private repository
+    mode: 2
+  - id: public
+    name: public repository
+    mode: 4
+    mirror:
+      - https://maven.aliyun.com/nexus/content/repositories/public
       - https://repo1.maven.org/maven2
