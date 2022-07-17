@@ -1,18 +1,19 @@
-listen: 127.0.0.1 # 监听地址
+listen: 0.0.0.0 # 监听地址
 port: 8880 # 监听端口
 logging:
-  path: . # 文件日志保存地址, 默认为空, 即不写入文件
+  path: /data/log # 文件日志保存地址, 默认为空, 即不写入文件
   level: debug # 日志级别
 context: maven # 基础路径
-localRepository: . # 本地仓库地址
+localRepository: /data/data # 本地仓库地址
 user: # 认证用户配置, 支持多个
   - name: user
     password: password
 repository: # 仓库设置
-  - id: mirror
-    name: maven mirror
-    mode: 4
-    mirror:
+  - id: mirror # 仓库ID
+    name: maven mirror # 名字, 随意
+    mode: 4 # 模式, 0 无效 2 仅可写 4 仅可读 6 可读写
+    cache: true # 是否缓存镜像文件, 默认不缓存
+    mirror: # 镜像地址, 会先尝试在本地加载, 如果加载失败, 会尝试从镜像依次读取
       - https://maven.aliyun.com/nexus/content/repositories/public
       - https://repo1.maven.org/maven2
   - id: private
@@ -21,6 +22,8 @@ repository: # 仓库设置
   - id: public
     name: public repository
     mode: 4
+    cache: true # 是否缓存镜像文件, 默认不缓存
+    target: private # 转发仓库, 会将请求转发到private仓库
     mirror:
       - https://maven.aliyun.com/nexus/content/repositories/public
       - https://repo1.maven.org/maven2

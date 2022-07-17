@@ -12,7 +12,7 @@ func main() {
 	config := util.LoadConfig()
 
 	if bytes, err := json.Marshal(config); err == nil {
-		log.Debugf("启动参数: %s\n", bytes)
+		log.Debugf("启动参数: %s", bytes)
 	} else {
 		log.Panic(err)
 	}

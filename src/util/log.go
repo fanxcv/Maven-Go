@@ -31,7 +31,7 @@ func init() {
 		}
 		// 同时写文件和屏幕
 		fileAndStdoutWriter := io.MultiWriter(src, os.Stdout)
-		log.SetOutput(fileAndStdoutWriter)
+		Log.SetOutput(fileAndStdoutWriter)
 	}
 }
 

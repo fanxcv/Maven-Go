@@ -66,12 +66,13 @@ func get(c *gin.Context) {
 		}
 
 		data := response.Body()
-		if repository.Cache {
+		status := response.StatusCode()
+		if repository.Cache && status == http.StatusOK {
 			// 不缓存metadata
 			filePath = strings.ToLower(filePath)
 			if ext != ".xml" && !strings.HasSuffix(filePath, ".xml.sha1") && !strings.HasSuffix(filePath, ".xml.md5") {
 				if err = saveFile(localFilePath, data); err != nil {
-					log.Errorf("cache mirror file failed. message: %v\n", err)
+					log.Errorf("cache mirror file failed. message: %v", err)
 				}
 			}
 		}
@@ -103,7 +104,7 @@ func put(c *gin.Context) {
 	length, err1 := strconv.Atoi(c.GetHeader("Content-Length"))
 	data, err2 := ioutil.ReadAll(c.Request.Body)
 	if err1 != nil || err2 != nil || length <= 0 || length != len(data) {
-		log.Errorf("data read failed\n%v\n%v\n", err1, err2)
+		log.Errorf("data read failed%v\n%v", err1, err2)
 		c.String(http.StatusInternalServerError, "data read failed")
 		return
 	}
@@ -238,6 +239,11 @@ func checkAndGetRepository(c *gin.Context) (repository *Repository, mirror *Repo
 	context := c.Param("context")
 	libName := c.Param("libName")
 	filePath := c.Param("filePath")
+
+	if context == "" || libName == "" {
+		return nil, nil, errors.New("empty repository")
+	}
+
 	fullPath := fmt.Sprintf("/%s/%s%s", context, libName, filePath)
 	if context != config.Context {
 		return nil, nil, errors.New(fmt.Sprintf("not found, url = %s", fullPath))
