@@ -10,7 +10,7 @@ build: clean
 run: build
 	./MavenGo
 docker: clean
-	docker build -t $(NAME) .
+	docker build --no-cache -t $(NAME) .
 init: clean
 	check=`docker buildx ls | grep ^xBuilder`; \
 	if [ "$$check" == "" ];then \
@@ -23,4 +23,5 @@ push: init
 	docker buildx build --platform linux/arm,linux/arm64,linux/amd64 -t $(HUB_USER)/$(NAME) -f DockerfileX . --push
 	rm -rf DockerfileX
 clean:
+	-docker images | egrep "<none>" | awk '{print $$3}' | xargs docker rmi
 	-rm -rf MavenGo go go.sum
