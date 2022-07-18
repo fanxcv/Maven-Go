@@ -24,4 +24,5 @@ push: init
 	rm -rf DockerfileX
 clean:
 	-docker images | egrep "<none>" | awk '{print $$3}' | xargs docker rmi
+	-docker ps -a | grep "\"buildkitd\"" | awk '{print $$1}' | xargs docker rm -f
 	-rm -rf MavenGo go go.sum
