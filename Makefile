@@ -20,7 +20,7 @@ init: clean
 push: init
 	cp Dockerfile DockerfileX
 	sed -i 's/FROM /FROM --platform=$$TARGETPLATFORM /g' DockerfileX
-	docker buildx build --platform linux/arm,linux/arm64,linux/amd64 -t $(HUB_USER)/$(NAME) -f DockerfileX . --push
+	docker buildx build --platform linux/arm,linux/arm64,linux/amd64 --no-cache -t $(HUB_USER)/$(NAME) -f DockerfileX . --push
 	rm -rf DockerfileX
 clean:
 	-docker images | egrep "<none>" | awk '{print $$3}' | xargs docker rmi
