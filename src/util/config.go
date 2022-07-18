@@ -41,8 +41,8 @@ type User struct {
 type Repository struct {
 	Id     string   `yaml:"id"`
 	Name   string   `yaml:"name"`
-	Mode   int      `yaml:"mode" default:"4"`
 	Target string   `yaml:"target"`
+	Mode   int      `yaml:"mode" default:"4"`
 	Cache  bool     `yaml:"cache" default:"false"`
 	Mirror []string `yaml:"mirror"`
 }
@@ -89,9 +89,15 @@ func init() {
 	}
 	// 预处理存储库
 	for _, repository := range config.Repository {
-		config.RepositoryStore[repository.Id] = repository
-		if repository.Mode > 0 {
-			log.Infof("repository: http://%s:%s/%s/%s", config.Listen, config.Port, config.Context, repository.Id)
+		// 移除未启用的repository
+		if repository.Mode == 0 {
+			continue
 		}
+		// 如果没设置目标目录, 则默认使用Id
+		if repository.Target == "" {
+			repository.Target = repository.Id
+		}
+		config.RepositoryStore[repository.Id] = repository
+		log.Infof("repository: http://%s:%s/%s/%s local dirname: %s", config.Listen, config.Port, config.Context, repository.Id, repository.Target)
 	}
 }

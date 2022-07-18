@@ -37,13 +37,13 @@ func init() {
 }
 
 func get(c *gin.Context) {
-	repository, mirror, err := checkAndGetRepository(c)
+	repository, err := checkAndGetRepository(c)
 	if err != nil {
 		c.String(http.StatusNotFound, err.Error())
 		return
 	}
 
-	if repository.Mode != 4 && repository.Mode != 6 {
+	if repository.Mode&4 != 4 {
 		c.String(http.StatusForbidden, "repository not support read")
 		return
 	}
@@ -54,7 +54,8 @@ func get(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, c.Request.RequestURI+"/")
 		return
 	}
-	localFilePath := path.Join(mirror.Id, filePath)
+
+	localFilePath := path.Join(config.LocalRepository, repository.Target, filePath)
 
 	f, err := fs.Open(localFilePath)
 	defer closeFile(f)
@@ -70,7 +71,7 @@ func get(c *gin.Context) {
 		if repository.Cache && status == http.StatusOK {
 			// 不缓存metadata
 			filePath = strings.ToLower(filePath)
-			if ext != ".xml" && !strings.HasSuffix(filePath, ".xml.sha1") && !strings.HasSuffix(filePath, ".xml.md5") {
+			if !strings.Contains(filePath, "maven-metadata.xml") {
 				if err = saveFile(localFilePath, data); err != nil {
 					log.Errorf("cache mirror file failed. message: %v", err)
 				}
@@ -92,6 +93,12 @@ func get(c *gin.Context) {
 		}
 	}
 
+	if repository.Target != repository.Id {
+		u := fmt.Sprintf("/%s/%s%s", config.Context, repository.Target, filePath)
+		c.Request.URL.RawPath = u
+		c.Request.URL.Path = u
+	}
+
 	fileServer.ServeHTTP(c.Writer, c.Request)
 }
 
@@ -109,19 +116,19 @@ func put(c *gin.Context) {
 		return
 	}
 
-	repository, mirror, err := checkAndGetRepository(c)
+	repository, err := checkAndGetRepository(c)
 	if err != nil {
 		c.String(http.StatusNotFound, err.Error())
 		return
 	}
 
-	if repository.Mode != 6 && repository.Mode != 2 {
+	if repository.Mode&2 != 2 {
 		c.String(http.StatusForbidden, "repository not support write")
 		return
 	}
 
 	filePath := c.Param("filePath")
-	localFilePath := path.Join(config.LocalRepository, mirror.Id, filePath)
+	localFilePath := path.Join(config.LocalRepository, repository.Target, filePath)
 	if err = saveFile(localFilePath, data); err != nil {
 		c.String(http.StatusInternalServerError, fmt.Sprintf("write file failed. message: %v\n", err))
 		return
@@ -235,36 +242,27 @@ func closeFile(f http.File) {
 	}
 }
 
-func checkAndGetRepository(c *gin.Context) (repository *Repository, mirror *Repository, err error) {
+func checkAndGetRepository(c *gin.Context) (repository *Repository, err error) {
 	context := c.Param("context")
 	libName := c.Param("libName")
 	filePath := c.Param("filePath")
 
 	if context == "" || libName == "" {
-		return nil, nil, errors.New("empty repository")
+		return nil, errors.New("empty repository")
 	}
 
 	fullPath := fmt.Sprintf("/%s/%s%s", context, libName, filePath)
 	if context != config.Context {
-		return nil, nil, errors.New(fmt.Sprintf("not found, url = %s", fullPath))
+		return nil, errors.New(fmt.Sprintf("not found, url = %s", fullPath))
 	}
 
 	// 获取存储库配置
 	repository = config.RepositoryStore[libName]
-	if repository == nil || repository.Mode == 0 {
-		return nil, nil, errors.New(fmt.Sprintf("repository %s is not actived", libName))
+	if repository == nil {
+		return nil, errors.New(fmt.Sprintf("repository %s is not actived", libName))
 	}
 
-	// 判断是否需要转为镜像库
-	if repository.Target != "" {
-		if mirror = config.RepositoryStore[repository.Target]; mirror == nil {
-			return nil, nil, errors.New(fmt.Sprintf("target repository %s is not found", repository.Target))
-		}
-	} else {
-		mirror = repository
-	}
-
-	return repository, mirror, nil
+	return repository, nil
 }
 
 func checkAuth(c *gin.Context) bool {
