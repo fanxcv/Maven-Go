@@ -55,10 +55,12 @@ func get(c *gin.Context) {
 		return
 	}
 
-	localFilePath := path.Join(config.LocalRepository, repository.Target, filePath)
+	localFilePath := path.Join(repository.Target, filePath)
 
 	f, err := fs.Open(localFilePath)
 	defer closeFile(f)
+
+	localFilePath = path.Join(config.LocalRepository, localFilePath)
 	if err != nil && len(repository.Mirror) > 0 {
 		// 尝试从url镜像获取返回
 		response := readRemote(repository, filePath)
